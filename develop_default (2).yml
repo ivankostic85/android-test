@@ -128,7 +128,7 @@ jobs:
     displayName: Create distribution
     condition: and(succeeded(), ne(variables['Build.Reason'], 'pullRequest'))
     inputs:
-      serverEndpoint: 477e24de-3a43-46c5-897b-10dd148ab353
+      serverEndpoint: bf411334-1928-47f9-89e9-b80485a230ea
       appSlug: v-ivankostic/android-test
       destinationGroupIds: 38a19e3e-f623-4cb1-8f63-5e21ed8d2de1
       isSilent: True
