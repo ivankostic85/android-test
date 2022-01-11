@@ -1,0 +1,109 @@
+# Variable 'MOBILECENTER_OUTPUT_DIRECTORY' was defined in the Variables tab
+# Variable 'MOBILECENTER_BRANCH' was defined in the Variables tab
+# Variable 'MOBILECENTER_BUILD_ID' was defined in the Variables tab
+# Variable 'MOBILECENTER_SOURCE_DIRECTORY' was defined in the Variables tab
+# Variable 'MOBILECENTER_TRIGGER' was defined in the Variables tab
+# Variable 'APPCENTER_OUTPUT_DIRECTORY' was defined in the Variables tab
+# Variable 'APPCENTER_BRANCH' was defined in the Variables tab
+# Variable 'APPCENTER_BUILD_ID' was defined in the Variables tab
+# Variable 'APPCENTER_SOURCE_DIRECTORY' was defined in the Variables tab
+# Variable 'APPCENTER_TRIGGER' was defined in the Variables tab
+# Variable 'buildScripts.toolset' was defined in the Variables tab
+# Variable 'moduleName' was defined in the Variables tab
+# Variable 'buildVariant' was defined in the Variables tab
+# Variable 'isRoot' was defined in the Variables tab
+# Variable 'runTests' was defined in the Variables tab
+# Variable 'runLint' was defined in the Variables tab
+# Variable 'keystoreEncoded' was defined in the Variables tab
+# Variable 'automaticSigning' was defined in the Variables tab
+# Variable 'buildBundle' was defined in the Variables tab
+# Variable 'MOBILECENTER_ANDROID_MODULE' was defined in the Variables tab
+# Variable 'MOBILECENTER_ANDROID_VARIANT' was defined in the Variables tab
+# Variable 'APPCENTER_ANDROID_MODULE' was defined in the Variables tab
+# Variable 'APPCENTER_ANDROID_VARIANT' was defined in the Variables tab
+# Variable 'sonoma.tags' was defined in the Variables tab
+# Agent Queue 'Azure Pipelines' was used with unrecognized Agent Specification, vmImage property must be specified to determine image - https://docs.microsoft.com/en-us/azure/devops/pipelines/agents/hosted?view=azure-devops&tabs=yaml#software
+name: $(BuildID)
+resources:
+  repositories:
+  - repository: self
+    type: git
+    ref: build-only
+jobs:
+- job: Phase_1
+  displayName: Build
+  timeoutInMinutes: 30
+  cancelTimeoutInMinutes: 0
+  pool:
+    name: Azure Pipelines
+  steps:
+  - checkout: self
+    clean: true
+    submodules: recursive
+    lfs: true
+  - task: PowerShell@2
+    displayName: Install build scripts
+    continueOnError: True
+    inputs:
+      targetType: inline
+      scriptName: ''
+      script: >-
+        Set-Location -Path '$(Agent.HomeDirectory)'
+
+        Invoke-WebRequest -Uri 'https://appcenterbuildassets-int.azureedge.net/buildscripts/appcenter-build-assets-latest.zip' -OutFile 'appcenter-build-assets-latest.zip'
+
+        if (Test-Path ./scripts) { Remove-Item -Path ./scripts -Force -Recurse }
+
+        New-Item -ItemType directory -Path 'scripts' | Out-Null
+
+        unzip -q -d 'scripts' 'appcenter-build-assets-latest.zip'
+
+        Invoke-Expression 'bash ./scripts/init.sh'
+      failOnStderr: true
+  - task: ShellScript@2
+    displayName: Tag build
+    inputs:
+      scriptPath: $(Agent.HomeDirectory)/scripts/emit-tags.sh
+      args: $(sonoma.tags)
+  - task: Gradle@1
+    displayName: Gradle Task
+    inputs:
+      tasks: 'clean :app:assembleRelease '
+      jdkArchitecture: x86
+      publishJUnitResults: false
+      sqAnalysisBreakBuildIfQualityGateFailed: false
+  - task: ShellScript@2
+    name: appcenter_android_postprocess_output
+    displayName: Android Postprocess
+    inputs:
+      scriptPath: $(Agent.HomeDirectory)/scripts/android-postprocess.sh
+      args: $(build.sourcesdirectory)/app/build/outputs/apk
+  - task: CopyFiles@2
+    displayName: Copy build files to staging
+    inputs:
+      SourceFolder: $(build.sourcesdirectory)/app/build/outputs
+      Contents: apk/**/*.apk
+      TargetFolder: $(build.artifactstagingdirectory)/build
+      OverWrite: true
+      flattenFolders: true
+  - task: CopyFiles@2
+    displayName: Copy mapping files to staging
+    inputs:
+      SourceFolder: $(build.sourcesdirectory)/app/build/outputs
+      Contents: mapping/**/mapping.txt
+      TargetFolder: $(build.artifactstagingdirectory)/mapping
+      OverWrite: true
+      flattenFolders: true
+  - task: PublishBuildArtifacts@1
+    displayName: Publish build
+    inputs:
+      PathtoPublish: $(build.artifactstagingdirectory)/build
+      ArtifactName: build
+  - task: PublishBuildArtifacts@1
+    displayName: Publish mapping
+    condition: and(succeeded(), startsWith(variables['appcenter_android_postprocess_output.mapping'], true))
+    continueOnError: True
+    inputs:
+      PathtoPublish: $(build.artifactstagingdirectory)/mapping
+      ArtifactName: mapping
+...
