@@ -6,7 +6,7 @@ parameters:
 
 variables:
   TEST_VAR_Y:
-    value: 'test var yaml'
+    value: test var yaml
 
 steps:
 - script: echo ${{ parameters.yesNo }}
