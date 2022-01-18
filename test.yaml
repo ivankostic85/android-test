@@ -1,14 +1,145 @@
-# File: simple-param.yml
-parameters:
-- name: yesNo # name of the parameter; required
-  type: boolean # data type of the parameter; required
-  default: false
+# Variable 'MOBILECENTER_OUTPUT_DIRECTORY' was defined in the Variables tab
+# Variable 'MOBILECENTER_BRANCH' was defined in the Variables tab
+# Variable 'MOBILECENTER_BUILD_ID' was defined in the Variables tab
+# Variable 'MOBILECENTER_SOURCE_DIRECTORY' was defined in the Variables tab
+# Variable 'MOBILECENTER_TRIGGER' was defined in the Variables tab
+# Variable 'APPCENTER_OUTPUT_DIRECTORY' was defined in the Variables tab
+# Variable 'APPCENTER_BRANCH' was defined in the Variables tab
+# Variable 'APPCENTER_BUILD_ID' was defined in the Variables tab
+# Variable 'APPCENTER_SOURCE_DIRECTORY' was defined in the Variables tab
+# Variable 'APPCENTER_TRIGGER' was defined in the Variables tab
+# Variable 'buildScripts.toolset' was defined in the Variables tab
+# Variable 'MOBILECENTER_XAMARIN_PROJECT' was defined in the Variables tab
+# Variable 'MOBILECENTER_XAMARIN_CONFIGURATION' was defined in the Variables tab
+# Variable 'APPCENTER_XAMARIN_PROJECT' was defined in the Variables tab
+# Variable 'APPCENTER_XAMARIN_CONFIGURATION' was defined in the Variables tab
+# Variable 'sonoma.tags' was defined in the Variables tab
+# Agent Queue 'Azure Pipelines' was used with unrecognized Agent Specification, vmImage property must be specified to determine image - https://docs.microsoft.com/en-us/azure/devops/pipelines/agents/hosted?view=azure-devops&tabs=yaml#software
+name: 
+resources:
+  repositories:
+  - repository: self
+    type: git
+    ref: refs/heads/test
+jobs:
+- job: Phase_1
+  displayName: Build
+  timeoutInMinutes: 30
+  cancelTimeoutInMinutes: 0
+  pool:
+    name: Azure Pipelines
+  steps:
+  - checkout: self
+    clean: true
+    submodules: recursive
+    lfs: true
+  - task: PowerShell@2
+    displayName: Install build scripts
+    continueOnError: True
+    inputs:
+      targetType: inline
+      scriptName: ''
+      script: >-
+        Set-Location -Path ''
 
+        Invoke-WebRequest -Uri 'https://appcenterbuildassets-int.azureedge.net/buildscripts/appcenter-build-assets-latest.zip' -OutFile 'appcenter-build-assets-latest.zip'
+
+        if (Test-Path ./scripts) { Remove-Item -Path ./scripts -Force -Recurse }
+
+        New-Item -ItemType directory -Path 'scripts' | Out-Null
+
+        unzip -q -d 'scripts' 'appcenter-build-assets-latest.zip'
+
+        Invoke-Expression 'bash ./scripts/init.sh'
+      failOnStderr: true
+  - task: ShellScript@2
+    displayName: Tag build
+    inputs:
+      scriptPath: /scripts/emit-tags.sh
+      args: 
+  - task: CmdLine@1
+    displayName: Set Mono version
+    inputs:
+      filename: /bin/bash
+      arguments: -c "echo '##vso[task.setvariable variable=DYLD_FALLBACK_LIBRARY_PATH;]'/Library/Frameworks/Mono.framework/Versions/6_12_11/lib:/lib:/usr/lib:;echo '##vso[task.setvariable variable=PKG_CONFIG_PATH;]'/Library/Frameworks/Mono.framework/Versions/6_12_11/lib/pkgconfig:/Library/Frameworks/Mono.framework/Versions/6_12_11/share/pkgconfig:;echo '##vso[task.setvariable variable=PATH;]'/Library/Frameworks/Mono.framework/Versions/6_12_11/bin:/Users/ivankostic/.pyenv/shims:/Users/ivankostic/.nvm/versions/node/v15.4.0/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/Applications/VMware Fusion.app/Contents/Public:/usr/local/go/bin:/usr/local/share/dotnet:~/.dotnet/tools:/Library/Apple/usr/bin"
+  - task: ShellScript@2
+    displayName: Set Xamarin SDK Bundle
+    inputs:
+      scriptPath: /scripts/select-xamarin-sdk.sh
+      args: 6_12_11
+      disableAutoCwd: true
+      cwd: 
+  - task: UseDotNet@2
+    displayName: Switch .NET Core version
+    inputs:
+      version: 3.1.401
+  - task: CmdLine@1
+    displayName: Restore Nuget
+    inputs:
+      filename: /bin/bash
+      arguments: -c "/usr/bin/find . -name '*.sln' -type f -print0 | /usr/bin/xargs -0 grep -l 'App center demo.Android.csproj' | /usr/bin/xargs -I '{}' nuget restore '{}' -DisableParallelProcessing"
+  - task: XamarinAndroid@1
+    displayName: Build Xamarin.Android project
+    inputs:
+      configuration: Debug
+      project: App center demo/App center demo.Android/App center demo.Android.csproj
+      jdkArchitecture: x86
+  - task: CmdLine@1
+    displayName: Making Output Folder
+    inputs:
+      filename: /bin/mkdir
+      arguments: /build
+  - task: CmdLine@1
+    displayName: Copy build files to staging
+    inputs:
+      filename: /bin/bash
+      arguments: -c "/usr/bin/find . -path '*/bin/*' ! -path '*/obj/*' -type f ! -name '*-Signed.apk' ! -name '*-armeabi-v7a.apk' ! -name '*-arm64-v8a.apk' ! -name '*-x86.apk' ! -name '*-x86_64.apk' -name '*.apk' -print0 | xargs -0 stat -f \"%m %N\" | sort -rn | head -1 | cut -f2- -d\" \" | xargs -L 1 -I{} cp -R -v {} /build"
+  - task: ShellScript@2
+    displayName: Xamarin Android Postprocess
+    inputs:
+      scriptPath: /scripts/android-xamarin-postprocess.sh
+      args: /build/*.apk
+  - task: PublishBuildArtifacts@1
+    displayName: Publish build
+    inputs:
+      PathtoPublish: /build
+      ArtifactName: build
+...
 variables:
-  TEST_VAR_Y: 66
-    # value: "test var yaml"
+  system.debug:
+    value: 'false'
+    allowOverride: true
+  MOBILECENTER_OUTPUT_DIRECTORY:
+    value: /build
+  MOBILECENTER_BRANCH:
+    value: test
+  MOBILECENTER_BUILD_ID:
+    value: 
+  MOBILECENTER_SOURCE_DIRECTORY:
+    value: 
+  MOBILECENTER_TRIGGER:
+    value: continuous
+  APPCENTER_OUTPUT_DIRECTORY:
+    value: /build
+  APPCENTER_BRANCH:
+    value: test
+  APPCENTER_BUILD_ID:
+    value: 
+  APPCENTER_SOURCE_DIRECTORY:
+    value: 
+  APPCENTER_TRIGGER:
+    value: continuous
+  buildScripts.toolset:
+    value: '{}'
+  MOBILECENTER_XAMARIN_PROJECT:
+    value: App center demo/App center demo.Android/App center demo.Android.csproj
+  MOBILECENTER_XAMARIN_CONFIGURATION:
+    value: Debug
+  APPCENTER_XAMARIN_PROJECT:
+    value: App center demo/App center demo.Android/App center demo.Android.csproj
+  APPCENTER_XAMARIN_CONFIGURATION:
+    value: Debug
+  sonoma.tags:
+    value: 'continuous,xamarin,android'
+    allowOverride: true
 
-steps:
-- script: echo ${{ parameters.yesNo }}
-- bash: echo $(TEST_VAR_P)
-- bash: echo $(TEST_VAR_Y)
