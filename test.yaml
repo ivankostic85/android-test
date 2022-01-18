@@ -4,5 +4,11 @@ parameters:
   type: boolean # data type of the parameter; required
   default: false
 
+variables:
+  TEST_VAR_Y:
+    value: 'test var yaml'
+
 steps:
 - script: echo ${{ parameters.yesNo }}
+- bash: echo $(TEST_VAR_P)
+- bash: echo $(TEST_VAR_Y)
